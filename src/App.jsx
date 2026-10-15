@@ -1,21 +1,49 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
+// [headline inside the heart, small line beneath it]
 const WORDS = [
-  "Forever Yours",
-  "I Love You",
-  "You Are My Universe",
-  "Love You Always ",
+  ["Forever Yours", "I love you"],
+  ["You Are My Universe", "every star, every orbit"],
+  ["Love You Always", "today and all the days after"],
+  ["My Whole Heart", "it has your name on it"],
 ];
 
+const POEM = [
+  "Of all the stars in the sky, you are the one I look for.",
+  "Wherever I am, my heart knows the way to you.",
+  "You make the quiet nights feel like home.",
+  "If love had a color, it would glow like this.",
+];
+
+const PALETTE = [
+  "#1680ff",
+  "#42a5ff",
+  "#8acbff",
+  "#d9eaff",
+  "#f19cff",
+  "#ffffff",
+];
 
 function App() {
   const canvasRef = useRef(null);
-  const sceneRef = useRef(null);
+  const [poemIndex, setPoemIndex] = useState(0);
+  const [sent, setSent] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(
+      () => setPoemIndex((i) => (i + 1) % POEM.length),
+      5200,
+    );
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
 
     const scene = {
       width: 0,
@@ -23,304 +51,337 @@ function App() {
       stars: [],
       hearts: [],
       bursts: [],
-      frame: 0,
-      messageIndex: 0,
+      meteors: [],
+      t: 0,
+      msg: 0,
     };
-
-    sceneRef.current = scene;
-
     let raf;
-    let lastTime = 0;
+    let last = 0;
+    let nextMeteor = 2;
 
-    const random = (min, max) => Math.random() * (max - min) + min;
+    const rand = (a, b) => Math.random() * (b - a) + a;
 
     function resize() {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-
       scene.width = window.innerWidth;
       scene.height = window.innerHeight;
-
       canvas.width = Math.round(scene.width * dpr);
       canvas.height = Math.round(scene.height * dpr);
       canvas.style.width = `${scene.width}px`;
       canvas.style.height = `${scene.height}px`;
-
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      scene.stars = Array.from(
-        {
-          length: Math.min(
-            240,
-            Math.floor((scene.width * scene.height) / 3000),
-          ),
-        },
-        () => ({
-          x: random(0, scene.width),
-          y: random(0, scene.height),
-          r: random(0.3, 1.3),
-          phase: random(0, Math.PI * 2),
-          speed: random(0.5, 2),
-          color: Math.random() > 0.8 ? "#9ccaff" : "#ffffff",
-        }),
+      const count = Math.min(
+        260,
+        Math.floor((scene.width * scene.height) / 3000),
       );
-
-      scene.hearts = Array.from({ length: 40 }, () => ({
-        x: random(0, scene.width),
-        y: random(0, scene.height),
-        size: random(4, 10),
-        phase: random(0, Math.PI * 2),
-        speed: random(0.6, 1.8),
+      scene.stars = Array.from({ length: count }, () => ({
+        x: rand(0, scene.width),
+        y: rand(0, scene.height),
+        r: rand(0.3, 1.3),
+        phase: rand(0, 6.28),
+        speed: rand(0.5, 2),
+        color: Math.random() > 0.8 ? "#9ccaff" : "#ffffff",
+      }));
+      scene.hearts = Array.from({ length: 36 }, () => ({
+        x: rand(0, scene.width),
+        y: rand(0, scene.height),
+        baseY: 0,
+        size: rand(4, 11),
+        phase: rand(0, 6.28),
+        speed: rand(0.6, 1.8),
+        drift: rand(4, 14),
         color: ["#1478ff", "#63b5ff", "#e68cff", "#ffffff"][
-          Math.floor(random(0, 4))
+          Math.floor(rand(0, 4))
         ],
       }));
+      scene.hearts.forEach((h) => (h.baseY = h.y));
     }
 
-    function drawHeart(x, y, size, color, alpha = 1) {
+    function drawHeart(x, y, size, color, alpha) {
       ctx.save();
       ctx.translate(x, y);
       ctx.scale(size / 16, size / 16);
       ctx.globalAlpha = alpha;
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = 14;
       ctx.shadowColor = color;
       ctx.fillStyle = color;
-
       ctx.beginPath();
       ctx.moveTo(0, 5);
       ctx.bezierCurveTo(-14, -4, -8, -13, 0, -7);
       ctx.bezierCurveTo(8, -13, 14, -4, 0, 5);
       ctx.fill();
-
       ctx.restore();
     }
 
     function makeBurst(x, y, message) {
-      const particles = [];
-      const count = 260;
-      const scale = Math.min(scene.width * 0.008, scene.height * 0.011, 6);
-
-      // Sample the outline of a mathematical heart.
-      for (let i = 0; i < count; i++) {
+      const scale = Math.min(scene.width * 0.009, scene.height * 0.012, 7);
+      const count = 320;
+      const particles = Array.from({ length: count }, (_, i) => {
         const t = (Math.PI * 2 * i) / count;
-        const hx = 16 * Math.pow(Math.sin(t), 3);
+        const hx = 16 * Math.sin(t) ** 3;
         const hy =
           13 * Math.cos(t) -
           5 * Math.cos(2 * t) -
           2 * Math.cos(3 * t) -
           Math.cos(4 * t);
-
-        const targetX = hx * scale;
-        const targetY = -hy * scale;
-
-        // A few particles start outside the outline for a firework effect.
-        const spread = Math.random() < 0.23 ? random(1.05, 1.65) : 1;
-
-        particles.push({
-          angle: t,
-          targetX: targetX * spread,
-          targetY: targetY * spread,
-          startX: random(-12, 12),
-          startY: random(-12, 12),
-          delay: random(0, 0.3),
-          size: random(0.7, 2.1),
-          color: [
-            "#1680ff",
-            "#42a5ff",
-            "#8acbff",
-            "#d9eaff",
-            "#e88cff",
-            "#ffffff",
-          ][Math.floor(random(0, 6))],
-          phase: random(0, 7),
-        });
-      }
-
-      // Fine sparks around the heart.
-      const sparks = Array.from({ length: 90 }, () => {
-        const angle = random(0, Math.PI * 2);
-        const distance = random(35, 125);
-
+        const spread = Math.random() < 0.2 ? rand(1.05, 1.6) : 1;
         return {
-          angle,
-          distance,
-          size: random(0.5, 1.8),
-          color: Math.random() > 0.5 ? "#258bff" : "#b9dfff",
-          delay: random(0, 0.5),
+          tx: hx * scale * spread,
+          ty: -hy * scale * spread,
+          sx: rand(-10, 10),
+          sy: rand(-10, 10),
+          delay: rand(0, 0.3),
+          size: rand(0.7, 2.2),
+          color: PALETTE[Math.floor(rand(0, PALETTE.length))],
+          phase: rand(0, 7),
         };
       });
-
+      // soft inner fill so the heart feels full
+      const inner = Array.from({ length: 70 }, () => {
+        const t = rand(0, 6.28);
+        const k = Math.sqrt(Math.random()) * 0.85;
+        const hx = 16 * Math.sin(t) ** 3;
+        const hy =
+          13 * Math.cos(t) -
+          5 * Math.cos(2 * t) -
+          2 * Math.cos(3 * t) -
+          Math.cos(4 * t);
+        return {
+          tx: hx * scale * k,
+          ty: -hy * scale * k,
+          size: rand(0.4, 1.1),
+          phase: rand(0, 7),
+          delay: rand(0.1, 0.4),
+        };
+      });
+      const sparks = Array.from({ length: 100 }, () => ({
+        angle: rand(0, 6.28),
+        distance: rand(40, 140),
+        size: rand(0.5, 1.8),
+        color: Math.random() > 0.5 ? "#258bff" : "#f0b4ff",
+        delay: rand(0, 0.5),
+      }));
       scene.bursts.push({
         x,
         y,
         start: performance.now(),
         message,
         particles,
+        inner,
         sparks,
-        duration: 5000,
+        duration: 6000,
       });
+      if (scene.bursts.length > 4) scene.bursts.shift();
+    }
 
-      if (scene.bursts.length > 4) {
-        scene.bursts.shift();
-      }
+    function spawnMeteor() {
+      const fromLeft = Math.random() > 0.5;
+      scene.meteors.push({
+        x: fromLeft
+          ? rand(0, scene.width * 0.5)
+          : rand(scene.width * 0.5, scene.width),
+        y: rand(0, scene.height * 0.35),
+        vx: (fromLeft ? 1 : -1) * rand(420, 620),
+        vy: rand(180, 300),
+        life: 0,
+      });
     }
 
     function draw(now) {
-      const dt = lastTime ? Math.min((now - lastTime) / 1000, 0.04) : 0;
-      lastTime = now;
-      scene.frame += dt;
-
+      const dt = last ? Math.min((now - last) / 1000, 0.04) : 0;
+      last = now;
+      scene.t += dt;
       ctx.clearRect(0, 0, scene.width, scene.height);
 
-      // Deep black-blue background.
-      ctx.fillStyle = "#02030d";
-      ctx.fillRect(0, 0, scene.width, scene.height);
-
-      // Twinkling distant stars.
-      for (const star of scene.stars) {
-        const alpha =
-          0.25 + (Math.sin(scene.frame * star.speed + star.phase) + 1) * 0.35;
-
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = star.color;
+      for (const s of scene.stars) {
+        ctx.globalAlpha =
+          0.25 + (Math.sin(scene.t * s.speed + s.phase) + 1) * 0.35;
+        ctx.fillStyle = s.color;
         ctx.beginPath();
-        ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
+        ctx.arc(s.x, s.y, s.r, 0, 6.28);
         ctx.fill();
       }
 
-      ctx.globalAlpha = 1;
-
-      // Glowing heart-shaped stars.
-      for (const heart of scene.hearts) {
-        const pulse =
-          0.7 + (Math.sin(scene.frame * heart.speed + heart.phase) + 1) * 0.3;
-
-        drawHeart(heart.x, heart.y, heart.size * pulse, heart.color, 0.9);
+      for (const h of scene.hearts) {
+        const pulse = 0.7 + (Math.sin(scene.t * h.speed + h.phase) + 1) * 0.3;
+        const y = h.baseY + Math.sin(scene.t * 0.4 + h.phase) * h.drift;
+        drawHeart(h.x, y, h.size * pulse, h.color, 0.85);
       }
 
-      const activeBursts = [];
+      // shooting stars
+      if (!reduceMotion) {
+        nextMeteor -= dt;
+        if (nextMeteor <= 0) {
+          spawnMeteor();
+          nextMeteor = rand(3, 7);
+        }
+      }
+      scene.meteors = scene.meteors.filter((m) => m.life < 1.1);
+      for (const m of scene.meteors) {
+        m.life += dt;
+        m.x += m.vx * dt;
+        m.y += m.vy * dt;
+        const a = Math.max(0, 1 - m.life);
+        const g = ctx.createLinearGradient(
+          m.x,
+          m.y,
+          m.x - m.vx * 0.18,
+          m.y - m.vy * 0.18,
+        );
+        g.addColorStop(0, `rgba(255,255,255,${a})`);
+        g.addColorStop(1, "rgba(120,180,255,0)");
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = g;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(m.x, m.y);
+        ctx.lineTo(m.x - m.vx * 0.18, m.y - m.vy * 0.18);
+        ctx.stroke();
+      }
 
-      for (const burst of scene.bursts) {
-        const elapsed = now - burst.start;
-        const progress = Math.min(elapsed / burst.duration, 1);
-        const fade = Math.min(1, (1 - progress) * 4);
+      const alive = [];
+      for (const b of scene.bursts) {
+        const elapsed = now - b.start;
+        const p = Math.min(elapsed / b.duration, 1);
+        if (p >= 1) continue;
+        alive.push(b);
+        const fade = Math.min(1, (1 - p) * 4);
         const appear = Math.min(1, elapsed / 900);
+        // gentle heartbeat once formed
+        const beat =
+          p > 0.12 ? 1 + Math.max(0, Math.sin(scene.t * 3.2)) ** 6 * 0.045 : 1;
 
-        if (progress >= 1) continue;
-        activeBursts.push(burst);
+        // soft glow behind the heart
+        const glow = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, 150);
+        glow.addColorStop(0, `rgba(60,130,255,${0.22 * fade * appear})`);
+        glow.addColorStop(1, "rgba(60,130,255,0)");
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = glow;
+        ctx.fillRect(b.x - 150, b.y - 150, 300, 300);
 
-        // Outer blue sparkle cloud.
-        for (const spark of burst.sparks) {
-          const local = Math.max(0, progress - spark.delay * 0.2);
-          const distance = spark.distance * (0.35 + local * 0.75);
-          const wobble = Math.sin(scene.frame * 3 + spark.angle) * 3;
-
+        for (const s of b.sparks) {
+          const local = Math.max(0, p - s.delay * 0.2);
+          const d =
+            s.distance * (0.35 + local * 0.75) +
+            Math.sin(scene.t * 3 + s.angle) * 3;
           ctx.globalAlpha = fade * 0.7;
-          ctx.fillStyle = spark.color;
+          ctx.fillStyle = s.color;
           ctx.shadowBlur = 8;
-          ctx.shadowColor = spark.color;
-
+          ctx.shadowColor = s.color;
           ctx.beginPath();
           ctx.arc(
-            burst.x + Math.cos(spark.angle) * (distance + wobble),
-            burst.y + Math.sin(spark.angle) * (distance + wobble),
-            spark.size,
+            b.x + Math.cos(s.angle) * d,
+            b.y + Math.sin(s.angle) * d,
+            s.size,
             0,
-            Math.PI * 2,
+            6.28,
           );
           ctx.fill();
         }
 
-        // Particles fly from the click point into a heart outline.
-        for (const p of burst.particles) {
-          const localProgress = Math.max(
-            0,
-            Math.min(1, (progress - p.delay * 0.5) / 0.35),
-          );
-
-          const ease = 1 - Math.pow(1 - localProgress, 3);
-
-          const px = burst.x + p.startX + p.targetX * ease;
-          const py = burst.y + p.startY + p.targetY * ease;
-
-          const shimmer = 0.65 + 0.35 * Math.sin(scene.frame * 5 + p.phase);
-
-          ctx.globalAlpha = fade * shimmer;
-          ctx.fillStyle = p.color;
+        for (const q of b.particles) {
+          const lp = Math.max(0, Math.min(1, (p - q.delay * 0.5) / 0.3));
+          const e = 1 - (1 - lp) ** 3;
+          ctx.globalAlpha =
+            fade * (0.65 + 0.35 * Math.sin(scene.t * 5 + q.phase));
+          ctx.fillStyle = q.color;
           ctx.shadowBlur = 10;
-          ctx.shadowColor = p.color;
-
+          ctx.shadowColor = q.color;
           ctx.beginPath();
-          ctx.arc(px, py, p.size, 0, Math.PI * 2);
+          ctx.arc(
+            b.x + q.sx + q.tx * e * beat,
+            b.y + q.sy + q.ty * e * beat,
+            q.size,
+            0,
+            6.28,
+          );
           ctx.fill();
         }
 
-        ctx.globalAlpha = 1;
+        for (const q of b.inner) {
+          const lp = Math.max(0, Math.min(1, (p - q.delay * 0.5) / 0.3));
+          ctx.globalAlpha =
+            fade * lp * (0.25 + 0.3 * Math.sin(scene.t * 3 + q.phase));
+          ctx.fillStyle = "#8acbff";
+          ctx.shadowBlur = 6;
+          ctx.shadowColor = "#42a5ff";
+          ctx.beginPath();
+          ctx.arc(b.x + q.tx * beat, b.y + q.ty * beat, q.size, 0, 6.28);
+          ctx.fill();
+        }
+
         ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
 
-        // Message appears inside the particle heart.
         if (appear > 0.4) {
-          const textAlpha = Math.min(1, (appear - 0.4) * 2.5) * fade;
-          const fontSize = Math.max(13, Math.min(18, scene.width * 0.027));
-
+          const ta = Math.min(1, (appear - 0.4) * 2.5) * fade;
+          const size = Math.max(15, Math.min(24, scene.width * 0.034));
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.font = `500 ${fontSize}px Arial, sans-serif`;
-          ctx.shadowBlur = 12;
+          ctx.shadowBlur = 16;
           ctx.shadowColor = "#64aaff";
-          ctx.fillStyle = `rgba(225, 239, 255, ${textAlpha})`;
-
-          ctx.fillText(burst.message, burst.x - 4, burst.y - 8);
-
-          ctx.fillText("I Love You", burst.x + 4, burst.y + 25);
-
+          ctx.fillStyle = `rgba(235, 244, 255, ${ta})`;
+          ctx.font = `italic 600 ${size}px "Cormorant Garamond", Georgia, serif`;
+          ctx.fillText(b.message[0], b.x, b.y - 8);
+          ctx.font = `italic 400 ${size * 0.62}px "Cormorant Garamond", Georgia, serif`;
+          ctx.fillStyle = `rgba(200, 224, 255, ${ta * 0.85})`;
+          ctx.fillText(b.message[1], b.x, b.y + size * 0.85);
           ctx.shadowBlur = 0;
         }
       }
-
-      scene.bursts = activeBursts;
+      scene.bursts = alive;
       ctx.globalAlpha = 1;
       raf = requestAnimationFrame(draw);
     }
 
-    function handleClick(event) {
+    function handlePointer(e) {
       const rect = canvas.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-
-      const message = WORDS[scene.messageIndex % WORDS.length];
-      scene.messageIndex++;
-
-      makeBurst(x, y, message);
+      makeBurst(
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+        WORDS[scene.msg % WORDS.length],
+      );
+      scene.msg++;
+      setSent((n) => n + 1);
     }
 
     resize();
-
-    // Start with a small particle heart in the middle, like the reference.
-    makeBurst(scene.width * 0.5, scene.height * 0.48, WORDS[0]);
-
-    canvas.addEventListener("pointerdown", handleClick);
+    makeBurst(scene.width * 0.5, scene.height * 0.52, WORDS[0]);
+    canvas.addEventListener("pointerdown", handlePointer);
     window.addEventListener("resize", resize);
     raf = requestAnimationFrame(draw);
 
     return () => {
       cancelAnimationFrame(raf);
-      canvas.removeEventListener("pointerdown", handleClick);
+      canvas.removeEventListener("pointerdown", handlePointer);
       window.removeEventListener("resize", resize);
     };
   }, []);
 
   return (
     <main className="love-universe">
+      <div className="nebula" aria-hidden="true" />
       <canvas
         ref={canvasRef}
         className="particle-canvas"
         aria-label="Interactive night sky. Click anywhere to send a heart."
       />
 
-      <div className="sky-instruction">
-        <span className="instruction-icon">♡</span>
-        Click anywhere to send heart
-      </div>
+      <header className="title-block">
+        <h1 className="title">Every Star Leads to You</h1>
+        <p key={poemIndex} className="poem">
+          {POEM[poemIndex]}
+        </p>
+      </header>
+
+      <footer className="sky-instruction">
+        <span className="instruction-icon" aria-hidden="true">
+          ♡
+        </span>
+        <span>Tap the sky to send a heart</span>
+        {sent > 0 && <span className="sent-count"></span>}
+      </footer>
     </main>
   );
 }
